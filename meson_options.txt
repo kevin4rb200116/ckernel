@@ -1,0 +1,24 @@
+option(
+  'ARCH',
+  type : 'string',
+  value : 'x86')
+
+option(
+  'ARCH_ABI',
+  type : 'combo',
+  choices: ['x32','x64'])
+
+option(
+  'BOOTDIR',
+  type : 'string',
+  value : '/boot')
+
+option(
+  'CCFLAGS',
+  type : 'array',
+  value : ['-pipe','-O2','-g'])
+
+option(
+  'SYSROOT',
+  type : 'string',
+  value : '/sysroot')
