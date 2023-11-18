@@ -8,117 +8,6 @@ section .text
   extern _init
   extern main
 
-  ; The kernel entry point.
-  global _start
-  _start:
-    ; Initialize the stack pointer.
-    lea esp, [.stack+16384]
-
-    ; Reset EFLAGS.
-    push dword 0x00
-    popf
-
-    ; eax and ebx contain information that the boot loader has passed to us
-    ; Store the magic value.
-    mov [.mb_magic],eax
-    ; Store the pointer to the Multiboot information structure.
-    mov [.mb_addr],ebx
-
-    .0if nop
-      mov edi,[.mb_magic]
-      call check_blmagic
-      cmp eax,0x1
-
-      jne .die32
-      .0if.then nop
-        lea edi,[.const.check_blmagic_msg]
-        call info32
-    .0endif nop
-
-    .1if nop
-      call check_cpuid
-      cmp eax,0x1
-
-      jne .die32
-      .1if.then nop
-        lea edi,[.const.check_cpuid_msg]
-        call info32
-        jmp .1endif
-    .1endif nop
-
-    .2if nop
-      call check_long_mode
-      cmp eax,0x1
-
-      jne .die32
-      .2if.then nop
-        lea edi,[.const.check_long_mode_msg]
-        call info32
-        jmp .2endif
-    .2endif nop
-
-    ; enable PAE and PSE
-    mov eax, cr4
-    or eax, (CR4_PAE + CR4_PSE)
-    mov cr4, eax
-
-    ; enable long mode and the NX bit
-    mov ecx, MSR_EFER
-    rdmsr
-    or eax, (EFER_LM + EFER_NX)
-    wrmsr
-
-    ; set cr3 to a pointer to pml4
-    mov eax, .boot_pml4
-    mov cr3, eax
-
-    ; enable paging
-    mov eax, cr0
-    or eax, CR0_PAGING
-    mov cr0, eax
-
-    cli
-    lgdt [.gdtr]
-    mov ax, 0x10
-    mov ss, ax
-    mov ax, 0x0
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    jmp 0x08:.long
-
-    bits 64
-    .long:
-      ; set up the new stack (multiboot2 spec says the stack pointer could be
-      ; anything - even pointing to invalid memory)
-      mov rbp,0 ; terminate stack traces here
-      lea rsp,qword [.stack+16384]
-
-      ; clear the RFLAGS register
-      push 0x0
-      popf
-
-      ; Call the global constructors.
-      call _init
-
-      ; Transfer control to the main kernel.
-      mov edi,[.mb_magic]
-      mov esi,[.mb_addr]
-      call main
-
-    .die64:
-      ; Hang if kernel_main unexpectedly returns.
-      cli
-
-      hlt
-      jmp .die64
-
-    bits 32
-    .die32:
-      call panic32
-
   global info32
   info32:
     push ebp
@@ -271,6 +160,116 @@ section .text
     pop ebp
     ret
 
+  ; The kernel entry point.
+  global _start
+  _start:
+    ; Initialize the stack pointer.
+    lea esp, [.stack+16384]
+
+    ; Reset EFLAGS.
+    push dword 0x00
+    popf
+
+    ; eax and ebx contain information that the boot loader has passed to us
+    ; Store the magic value.
+    mov [.mb_magic],eax
+    ; Store the pointer to the Multiboot information structure.
+    mov [.mb_addr],ebx
+
+    .0if nop
+      mov edi,[.mb_magic]
+      call check_blmagic
+      cmp eax,0x1
+
+      jne _start_die
+      .0if.then nop
+        lea edi,[.const.check_blmagic_msg]
+        call info32
+    .0endif nop
+
+    .1if nop
+      call check_cpuid
+      cmp eax,0x1
+
+      jne _start_die
+      .1if.then nop
+        lea edi,[.const.check_cpuid_msg]
+        call info32
+        jmp .1endif
+    .1endif nop
+
+    .2if nop
+      call check_long_mode
+      cmp eax,0x1
+
+      jne _start_die
+      .2if.then nop
+        lea edi,[.const.check_long_mode_msg]
+        call info32
+        jmp .2endif
+    .2endif nop
+
+    ; enable PAE and PSE
+    mov eax, cr4
+    or eax, (CR4_PAE + CR4_PSE)
+    mov cr4, eax
+
+    ; enable long mode and the NX bit
+    mov ecx, MSR_EFER
+    rdmsr
+    or eax, (EFER_LM + EFER_NX)
+    wrmsr
+
+    ; set cr3 to a pointer to pml4
+    mov eax, .boot_pml4
+    mov cr3, eax
+
+    ; enable paging
+    mov eax, cr0
+    or eax, CR0_PAGING
+    mov cr0, eax
+
+    cli
+    lgdt [.gdtr]
+    mov ax, 0x10
+    mov ss, ax
+    mov ax, 0x0
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    jmp 0x08:_start_long
+
+    _start_die:
+      call panic32
+
+  bits 64
+  _start_long:
+    ; set up the new stack (multiboot2 spec says the stack pointer could be
+    ; anything - even pointing to invalid memory)
+    mov rbp,0 ; terminate stack traces here
+    lea rsp,qword [_start.stack+16384]
+
+    ; clear the RFLAGS register
+    push 0x0
+    popf
+
+    ; Call the global constructors.
+    call _init
+
+    ; Transfer control to the main kernel.
+    mov edi,[_start.mb_magic]
+    mov esi,[_start.mb_addr]
+    call main
+
+  _start_long_die:
+    ; Hang if kernel_main unexpectedly returns.
+    cli
+
+    hlt
+    jmp _start_long_die
+
 section .rodata
   _start.const.check_blmagic_msg db "check_blmagic()",0x00
   _start.const.check_cpuid_msg db "check_cpuid()",0x00
@@ -399,4 +398,3 @@ section .paging align=4096
   _start.gdtr:
     dw _start.gdt.end - _start.gdt - 1
     dq _start.gdt
-
